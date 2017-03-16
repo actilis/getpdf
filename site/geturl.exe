@@ -1,0 +1,202 @@
+#!/bin/bash
+
+# +============================================================+
+#   Service de génération de PDF ou d'images à partir d'une URL 
+#          Version 20151215 - fmicaux@actilis.net
+# +============================================================+
+
+# ============================ #
+# Initialisations et controles #
+# ============================ #
+
+# Pour calcul du temps passé
+StartTime=$(date +%s%N)
+
+CONFIGDIR=config
+. ${CONFIGDIR}/main.conf
+. ${LIBDIR}/log_functions.sh
+
+[ ! -x ${PROG} ] && erreur_exit 500 "Problème sur le serveur (${PROG} non exécutable)"
+
+# Test de controle d'accès
+if [ "${ENABLE_ACL}" == "true" ] ; then
+   grep -q "^${REMOTE_ADDR}$" "$CONFIGDIR/acl.conf" || erreur_exit 403 "ACL:Accès Interdit pour ${REMOTE_ADDR}."
+fi
+
+# Vérification de la présence et de l'accessibilité des répertoires et fichiers nécesaires
+[ ! -d "${DOCDIR}" ] && erreur_exit 500 "Problème de configuration sur le serveur (DOCDIR)"
+[ ! -w "${DOCDIR}" ] && erreur_exit 500 "Problème de permissions sur DOCDIR"
+[ ! -d "${LOGDIR}" ] && erreur_exit 500 "Problème de configuration sur le serveur (LOGDIR)"
+[ ! -w "${LOGDIR}" ] && erreur_exit 500 "Problème de permissions sur LOGDIR"
+
+
+# ========================== #
+# Analyse de la QUERY_STRING #
+# ========================== #
+
+# Format:  FORMAT=pdf,png,jpeg,svg...
+# =====================================
+typeset -l FORMAT
+if echo "$QUERY_STRING" | grep -q "FORMAT=" ; then
+  tmp_FORMAT="${QUERY_STRING/*FORMAT=/}"
+  FORMAT="${tmp_FORMAT/&*/}"
+  case "$FORMAT" in
+    # Format : paramètre OBLIGATOIRE
+    pdf)  
+         PROG=${PROGPDF} 
+         HEADER_CONTENT_TYPE="application/pdf"
+         DEFAULT_CONFIG=default-pdf.conf
+         ;;
+    png|jpeg|svg) 
+         PROG=${PROGIMG}
+         HEADER_CONTENT_TYPE="image/${FORMAT}"
+         DEFAULT_CONFIG=default-image.conf
+         ;;
+    *)   erreur_exit 400 "Mauvais paramètre FORMAT ($FORMAT), valeur non acceptée." ;;
+  esac
+  DOC+=".${FORMAT}"
+else
+  erreur_exit 400 "Paramètre FORMAT manquant (pdf, png, jpeg, svg)" 
+fi
+
+# Mode : MODE=redirect  / MODE=inline
+# ===================================
+if echo "$QUERY_STRING" | grep -q "MODE=" ; then
+  tmp_MODE="${QUERY_STRING/*MODE=/}"
+  MODE="${tmp_MODE/&*/}"
+  case "$MODE" in
+    redirect|inline|url) ;;
+    *)        erreur_exit 400 "Mauvais paramètre MODE ($MODE)" ;;
+  esac
+fi
+
+# Cookie ?  ex:   COOKIE=PHPSESSID:gliar1jog2kv953hdcp30nkj63
+# ===========================================================
+if echo "$QUERY_STRING" | grep -q "COOKIE=" ; then
+  COOKIE_OPTION=""
+  tmp_COOKIE="${QUERY_STRING/*COOKIE=/}"
+  tmp_COOKIE="${tmp_COOKIE/&*/}"
+  COOKIE_NAME="${tmp_COOKIE/:*/}"
+  COOKIE_VAL="${tmp_COOKIE/*:/}"
+  if [ "${COOKIE_NAME}" != "" ] && [ "${COOKIE_VAL}" != "" ] ;then
+     COOKIE_OPTION="--cookie ${COOKIE_NAME} ${COOKIE_VAL}"
+  else
+     erreur_exit 400 "Mauvais paramètre COOKIE: NAME=${COOKIE_NAME}, VAL=${COOKIE_VAL}"
+  fi
+fi
+
+# Config-file ?  ex:   CFG=ademe_01   => fichier  options/ademe_01.conf  Defaut = default.conf
+# ============================================================================================
+if echo "$QUERY_STRING" | grep -q "CFG=" ; then
+  tmp_CFG="${QUERY_STRING/*CFG=/}"
+  tmp_CFG="${tmp_CFG/&*/}"
+
+  # Eliminination des caractères interdits
+  tmp_CFG=$(echo "${tmp_CFG}" | tr -d './<>~()*?')
+
+  CFG="${OPTIONSDIR}/${tmp_CFG}.conf"
+  if [ ! -r "${CFG}" ] ; then
+    # erreur_exit 400 "CFG=$CFG non lisible."
+    err_write "Err: CFG=$CFG non lisible."
+    CFG="${OPTIONSDIR}/${DEFAULT_CONFIG}"
+  fi
+fi
+OPTIONS=$(grep -v '^#' "$CFG")
+
+
+# Parametre URL=... (doit commencer par "http")
+# =============================================
+if echo "$QUERY_STRING" | grep -q "URL=" ; then
+  tmp_URL="${QUERY_STRING/*URL=/}"
+
+  # KO si URL contient des '&' ==> Forçage en dernier paramètre, ou appel à urldecode
+  tmp_URL="${tmp_URL/&*/}"
+
+  # Décodage de l'URL (ne change rien si elle est non encodée)
+  printf -v URL '%b' "${tmp_URL//%/\\x}"
+
+  [ ${URL:0:4} != "http" ] && erreur_exit 400 "L'URL ($URL) n'est pas correcte"
+fi
+
+# ======================================== #
+# Ici commence le traitement de la requête #
+# ======================================== #
+
+$PROG ${WKHTMLTODOC_MANDATORY_OPTIONS} ${COOKIE_OPTION} ${OPTIONS} "$URL" $DOC  >>$REQUESTLOG  2>&1 
+CR=$?
+
+# On teste la réussite de wkhtmltox et on applique le mode de transmission si pas d'erreur
+if (( CR != 0 )); then
+
+  # S'il y a eu une erreur, on passe en en erreur
+  echo "
+    Détails de la requête :
+    =====================
+      QUERY_STRING: $QUERY_STRING
+
+      REQUESTID: $REQUESTID
+      FORMAT: ${FORMAT:vide}
+      COOKIE: ${COOKIE:vide}
+      CFG: ${CFG:vide}
+      MODE: ${MODE:vide}
+      URL: ${URL:vide}
+
+      COMMANDE EXECUTEE : $PROG ${WKHTMLTODOC_MANDATORY_OPTIONS} ${COOKIE_OPTION} ${OPTIONS} $URL $DOC
+
+      Code retour : $CR
+
+  " >>$REQUESTLOG  2>&1
+
+  err_write "${REMOTE_ADDR} $REQUESTID COOKIE=$COOKIE CFG=$CFG MODE=$MODE URL=$URL bytes=0 FORMAT=$FORMAT output=$DOC elapsed=${Elapsed}ms CR=${CR}"
+  erreur_exit 503 ErrFile:$REQUESTLOG 
+
+else
+
+  f_Size=$(stat -c"%s" $DOC)
+
+  case "$MODE" in
+    # Mode1 : redirection
+    redirect)
+       echo "X-Log-URL: logs/log.${REQUESTID}"
+       echo "Location: $DOC"
+       echo ""
+       ;;
+    inline)
+    # Mode2 : inline
+       echo "Content-Type: ${HEADER_CONTENT_TYPE}; name=$(basename ${DOC})"
+       echo "Content-Disposition: inline; filename=$(basename ${DOC})"
+       echo "Content-Length: ${f_Size}"
+       echo "X-Log-URL: logs/log.${REQUESTID}"
+       echo ""
+       cat $DOC
+       ;;
+
+    *)
+    # Mode3 : juste l'url du résultat
+       doc_URL="${REQUEST_SCHEME}://${SERVER_NAME}/${DOC}"
+       echo "Content-Type: text/plain"
+       echo "Content-Length: ${#doc_URL}"
+       echo "X-Doc-URL: ${doc_URL}"
+       echo "X-Log-URL: logs/log.${REQUESTID}"
+       echo "" 
+       echo "${doc_URL}"
+       ;;
+  esac
+  
+fi
+
+# ================ #
+# Log des requêtes #
+# ================ #
+EndTime=$(date +%s%N)
+Elapsed=$(( (EndTime - StartTime)/1000000 ))
+log_write "${REMOTE_ADDR} $REQUESTID COOKIE=$COOKIE CFG=$CFG MODE=$MODE URL=$URL bytes=${f_Size} FORMAT=$FORMAT output=$DOC elapsed=${Elapsed}ms CR=${CR}"
+
+# ========================================================== #
+# Garbage Collector /  Nettoyage des vieux logs et vieux DOC #
+# ========================================================== #
+[ -d ./${DOCDIR} ] && find ./${DOCDIR} -name 'document*.*' -type f  -mmin +${ARCHIVEDOC} -delete  2>/dev/null
+[ -d ./${LOGDIR} ] && find ./${LOGDIR} \( -name 'access_log-*' -o -name 'error_log-*' \) -type f  -mmin +${ARCHIVELOG} -delete  2>/dev/null
+[ -d ./${LOGDIR} ] && find ./${LOGDIR} -name 'log.*' -type f  -mmin +${ARCHIVEDEBUG} -delete  2>/dev/null
+
+

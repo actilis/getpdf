@@ -1,0 +1,9 @@
+# Interdiction de consulter le contenu de ce répertoire
+Order Allow,Deny
+Deny from All
+
+# Sauf pour le log de chaque requête
+<FilesMatch "^log\.">
+  Order Allow,Deny
+  Allow from All
+</FilesMatch>
