@@ -3,6 +3,7 @@
 # +============================================================+
 #   Service de génération de PDF ou d'images à partir d'une URL 
 #          Version 20151215 - fmicaux@actilis.net
+#          Version 20180410 - fmicaux@actilis.net
 # +============================================================+
 
 # ============================ #
@@ -52,7 +53,7 @@ if echo "$QUERY_STRING" | grep -q "FORMAT=" ; then
          HEADER_CONTENT_TYPE="image/${FORMAT}"
          DEFAULT_CONFIG=default-image.conf
          ;;
-    *)   erreur_exit 400 "Mauvais paramètre FORMAT ($FORMAT), valeur non acceptée." ;;
+    *)   erreur_exit 400 "Mauvais paramètre 'FORMAT' ($FORMAT), valeur non acceptée." ;;
   esac
   DOC+=".${FORMAT}"
 else

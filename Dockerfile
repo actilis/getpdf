@@ -4,7 +4,7 @@ MAINTAINER Francois MICAUX <dok-getpdf@actilis.net>
 
 LABEL Vendor="Actilis" \
       License=GPLv3 \
-      Version=18.1
+      Version=18.4
 
 RUN yum -y --setopt=tsflags=nodocs install libXrender libXext  fontconfig libfontenc libXfont urw-fonts xz \
  && curl -Ls https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz \
