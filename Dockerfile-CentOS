@@ -1,4 +1,4 @@
-FROM actilis/httpd-cgi:latest
+FROM actilis/httpd-cgi:centos-latest
 
 MAINTAINER Francois MICAUX <dok-getpdf@actilis.net>
 
