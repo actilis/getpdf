@@ -7,14 +7,24 @@ et le retour du contenu. Tout paramètre accepté par l'outil de
 conversion utilisé doit pouvoir être soumis, par le biais d'un 
 fichier de configuration.
 
+Les images ou PDF générés sont conservés quelques temps sur le
+serveur et purgés automatiquement.
+
+Il est possible de récupérer directement le document (mode inline)
+ou bien de suivre une redirection (mode redirect) pour pointer le
+document sur le serveur.
+
 
 Utilisation :
 =============
 http://pdf.actilis.net/?MODE=mode&COOKIE=name:value&CFG=name&URL=http[s]://url&FORMAT=png
                         ----      ------            ---      ===               ======
-Exemple : 
-=========
-http://pdf.actilis.net/?URL=http://www.google.fr/&FORMAT=pdf&MODE=inline
+Exemples : 
+==========
+http://pdf.actilis.net/....
+                       ?FORMAT=pdf&MODE=inline&URL=http://www.actilis.net
+                       ?FORMAT=jpeg&MODE=inline&URL=http://www.actilis.net
+                       ?FORMAT=png&MODE=redirect&URL=http://www.actilis.net
 
 
 PARAMETRES : [OBL]=ogligatoire   / [OPT]=optionnel
