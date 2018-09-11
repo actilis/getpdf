@@ -90,8 +90,8 @@ PARAMETRES : [OBL]=ogligatoire   / [OPT]=optionnel
     - une par ligne pour plus de lisibilité,
     - des commentaires (#) ou lignes vides sont acceptés et ignorés.
 
-    Ils sont stockés sur le serveur par sous un nom convenu avec l'utilisateur
-    après avoir été validés.
+    Ils sont stockés sur le serveur par l'hébergeur sous un nom convenu avec 
+    l'utilisateur après avoir été validés.
 
 
 En cas d'erreur : Un code retour HTTP est positionné
